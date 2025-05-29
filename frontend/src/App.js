@@ -43,7 +43,7 @@ const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      await axios.post(`${API_BASE_URL}/logout`);
+      await axios.post(`${API_BASE_URL}/api/logout`);
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
