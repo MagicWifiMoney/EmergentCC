@@ -275,13 +275,9 @@ def main():
     if not cards_success:
         print("❌ Get credit cards test failed")
     
-    print("\n=== Testing Dashboard Stats ===")
-    if not tester.test_get_dashboard_stats():
-        print("❌ Get dashboard stats test failed")
-    
-    # Only clear cards if there are any
+    # Clear existing cards to start with a clean state
     if cards_success and len(cards) > 0:
-        print("\n=== Testing Clear All Cards ===")
+        print("\n=== Clearing Existing Cards ===")
         if not tester.test_clear_all_cards():
             print("❌ Clear all cards test failed")
         
@@ -292,6 +288,35 @@ def main():
             print("✅ All cards successfully cleared")
         else:
             print("❌ Cards were not cleared properly")
+    
+    # Create test cards for analytics testing
+    print("\n=== Creating Test Credit Cards ===")
+    if not tester.create_test_credit_cards():
+        print("❌ Failed to create all test cards")
+    
+    # Test dashboard stats with test data
+    print("\n=== Testing Enhanced Dashboard Stats ===")
+    if not tester.test_get_dashboard_stats():
+        print("❌ Get dashboard stats test failed")
+    
+    # Test individual card deletion
+    print("\n=== Testing Individual Card Deletion ===")
+    success, cards = tester.test_get_credit_cards()
+    if success and len(cards) > 0:
+        card_id = cards[0]["id"]
+        if not tester.test_delete_card(card_id):
+            print(f"❌ Failed to delete card with ID: {card_id}")
+        else:
+            # Verify card was deleted
+            verify_success, verify_cards = tester.test_get_credit_cards()
+            if verify_success and len(verify_cards) == len(cards) - 1:
+                print("✅ Card successfully deleted")
+            else:
+                print("❌ Card was not deleted properly")
+    
+    # Clean up - clear all cards
+    print("\n=== Final Cleanup ===")
+    tester.test_clear_all_cards()
     
     # Print results
     print(f"\n📊 Tests passed: {tester.tests_passed}/{tester.tests_run}")
