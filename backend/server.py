@@ -417,7 +417,7 @@ def analyze_credit_portfolio(cards: List[dict]) -> dict:
 # Authentication Routes
 @auth_router.get("/login/google")
 async def google_login(request: Request):
-    redirect_uri = f"{FRONTEND_URL}/auth/google"
+    redirect_uri = f"{FRONTEND_URL}/api/auth/google"
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 @auth_router.get("/auth/google")
