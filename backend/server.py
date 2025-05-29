@@ -62,7 +62,7 @@ oauth.register(
     client_secret=os.environ.get('GOOGLE_CLIENT_SECRET'),
     server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
     client_kwargs={'scope': 'openid email profile'},
-    authorize_redirect_uri=f"{FRONTEND_URL}/auth/google"
+    authorize_redirect_uri=f"{FRONTEND_URL}/api/auth/google"
 )
 
 # Create a router with the /api prefix
