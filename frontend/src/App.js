@@ -38,7 +38,7 @@ const AuthProvider = ({ children }) => {
   };
 
   const login = (redirectUrl = null) => {
-    window.location.href = `${API_BASE_URL}/login/google`;
+    window.location.href = `${API_BASE_URL}/api/login/google`;
   };
 
   const logout = async () => {
