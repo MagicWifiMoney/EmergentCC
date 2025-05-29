@@ -2,6 +2,7 @@ import requests
 import unittest
 import sys
 import json
+import uuid
 from datetime import datetime
 
 class CreditCardAPITester:
