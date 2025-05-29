@@ -76,11 +76,35 @@ class CreditCardAppTester:
 
     def test_google_login_redirect(self):
         """Test the Google login redirect endpoint"""
-        return self.run_test(
+        success, response = self.run_test(
             "Google Login Redirect", 
             "GET", 
             "api/login/google", 
             'redirect',
+            allow_redirects=False
+        )
+        
+        if success:
+            redirect_url = response.headers.get('Location', '')
+            print(f"Redirect URL: {redirect_url}")
+            
+            # Verify the redirect URL contains Google OAuth
+            if 'accounts.google.com' in redirect_url:
+                print("✅ Redirect URL contains Google OAuth domain")
+            else:
+                print("❌ Redirect URL does not contain Google OAuth domain")
+                success = False
+        
+        return success, response
+
+    def test_auth_google_callback_endpoint(self):
+        """Test the Google auth callback endpoint (without actual OAuth flow)"""
+        # We can't fully test this without a real OAuth flow, but we can check if the endpoint exists
+        return self.run_test(
+            "Google Auth Callback Endpoint", 
+            "GET", 
+            "api/auth/google", 
+            302,  # Should redirect to login page without valid OAuth token
             allow_redirects=False
         )
 
@@ -92,7 +116,8 @@ class CreditCardAppTester:
         """Test protected endpoints without authentication"""
         endpoints = [
             ("Credit Cards", "GET", "api/credit-cards"),
-            ("Dashboard Stats", "GET", "api/dashboard-stats")
+            ("Dashboard Stats", "GET", "api/dashboard-stats"),
+            ("Upload Credit Report", "POST", "api/upload-credit-report")
         ]
         
         results = []
@@ -101,6 +126,14 @@ class CreditCardAppTester:
             results.append(result)
         
         return all(r[0] for r in results)
+
+    def test_logout_endpoint(self):
+        """Test the logout endpoint"""
+        return self.run_test("Logout Endpoint", "POST", "api/logout", 200)
+
+    def test_refresh_token_endpoint_unauthorized(self):
+        """Test the refresh token endpoint without a valid refresh token"""
+        return self.run_test("Refresh Token (Unauthorized)", "POST", "api/refresh", 401)
 
     def print_summary(self):
         """Print a summary of the test results"""
@@ -121,7 +154,14 @@ def main():
     
     # Run tests
     tester.test_api_root()
+    
+    # Test authentication endpoints
     tester.test_google_login_redirect()
+    tester.test_auth_google_callback_endpoint()
+    tester.test_logout_endpoint()
+    tester.test_refresh_token_endpoint_unauthorized()
+    
+    # Test protected endpoints without authentication
     tester.test_me_endpoint_unauthorized()
     tester.test_protected_endpoints_unauthorized()
     
