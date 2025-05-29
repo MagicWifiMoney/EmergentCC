@@ -124,6 +124,35 @@ function App() {
     }
   };
 
+  const renderIssuerBreakdown = () => {
+    const breakdown = stats.issuer_breakdown || {};
+    const total = Object.values(breakdown).reduce((sum, count) => sum + count, 0);
+    
+    if (total === 0) return null;
+
+    return (
+      <div className="space-y-3">
+        {Object.entries(breakdown).map(([issuer, count]) => {
+          const percentage = (count / total) * 100;
+          return (
+            <div key={issuer} className="flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-700">{issuer}</span>
+              <div className="flex items-center space-x-2">
+                <div className="w-24 bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full"
+                    style={{ width: `${percentage}%` }}
+                  ></div>
+                </div>
+                <span className="text-sm text-gray-600 w-8">{count}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
       {/* Header */}
@@ -140,7 +169,7 @@ function App() {
                 <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
                   Credit Card Manager
                 </h1>
-                <p className="text-gray-600 mt-1">AI-powered credit report analysis</p>
+                <p className="text-gray-600 mt-1">AI-powered credit optimization & rewards tracking</p>
               </div>
             </div>
             
@@ -186,11 +215,11 @@ function App() {
         {activeTab === 'dashboard' && (
           <div className="space-y-8">
             <div className="text-center mb-8">
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Your Credit Overview</h2>
-              <p className="text-gray-600">Track and manage all your credit cards in one place</p>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Credit Portfolio Overview</h2>
+              <p className="text-gray-600">Advanced analytics and optimization insights for your credit cards</p>
             </div>
             
-            {/* Stats Grid */}
+            {/* Main Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <div className="glass-card hover-lift">
                 <div className="flex items-center">
@@ -249,6 +278,179 @@ function App() {
               </div>
             </div>
 
+            {creditCards.length > 0 && (
+              <>
+                {/* Advanced Analytics Row */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  
+                  {/* 5/24 Checker */}
+                  <div className="glass-card">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-gray-900">Chase 5/24 Status</h3>
+                      <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                        stats.five_24_status?.is_eligible 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {stats.five_24_status?.status || 'Unknown'}
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600">Cards in 24 months</span>
+                        <span className="text-2xl font-bold text-gray-900">
+                          {stats.five_24_status?.cards_in_24_months || 0}/5
+                        </span>
+                      </div>
+                      
+                      <div className="w-full bg-gray-200 rounded-full h-3">
+                        <div 
+                          className={`h-3 rounded-full transition-all duration-300 ${
+                            (stats.five_24_status?.cards_in_24_months || 0) >= 5 
+                              ? 'bg-gradient-to-r from-red-500 to-red-600' 
+                              : 'bg-gradient-to-r from-green-500 to-green-600'
+                          }`}
+                          style={{ width: `${Math.min(((stats.five_24_status?.cards_in_24_months || 0) / 5) * 100, 100)}%` }}
+                        ></div>
+                      </div>
+                      
+                      <div className="text-sm text-gray-600">
+                        <strong>Remaining slots:</strong> {stats.five_24_status?.remaining_slots || 0}
+                      </div>
+                      
+                      <div className="text-sm text-gray-700 bg-blue-50 p-3 rounded-lg">
+                        💡 {stats.five_24_status?.recommendation || 'No recommendation available'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Annual Fees Tracker */}
+                  <div className="glass-card">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-gray-900">Annual Fees</h3>
+                      <div className="bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-sm font-medium">
+                        {formatCurrency(stats.total_annual_fees || 0)}
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Fee Cards</span>
+                        <span className="font-medium">{stats.portfolio_analysis?.annual_fees?.fee_cards_count || 0}</span>
+                      </div>
+                      
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">No-Fee Cards</span>
+                        <span className="font-medium">{stats.portfolio_analysis?.annual_fees?.no_fee_cards_count || 0}</span>
+                      </div>
+                      
+                      {stats.portfolio_analysis?.annual_fees?.fee_cards?.length > 0 && (
+                        <div className="mt-4">
+                          <p className="text-sm font-medium text-gray-700 mb-2">Highest Fee Cards:</p>
+                          <div className="space-y-1">
+                            {stats.portfolio_analysis.annual_fees.fee_cards
+                              .sort((a, b) => b.annual_fee - a.annual_fee)
+                              .slice(0, 3)
+                              .map((card, index) => (
+                              <div key={index} className="flex justify-between text-sm">
+                                <span className="text-gray-600 truncate mr-2">{card.card_name}</span>
+                                <span className="font-medium">{formatCurrency(card.annual_fee)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Credit Age Analysis */}
+                  <div className="glass-card">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-gray-900">Credit Age</h3>
+                      <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
+                        {stats.age_analysis?.average_age_years ? `${stats.age_analysis.average_age_years} yrs` : 'N/A'}
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Oldest Card</span>
+                        <span className="font-medium text-sm">
+                          {stats.age_analysis?.oldest_card_date ? formatDate(stats.age_analysis.oldest_card_date) : 'N/A'}
+                        </span>
+                      </div>
+                      
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Newest Card</span>
+                        <span className="font-medium text-sm">
+                          {stats.age_analysis?.newest_card_date ? formatDate(stats.age_analysis.newest_card_date) : 'N/A'}
+                        </span>
+                      </div>
+                      
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Avg Age (months)</span>
+                        <span className="font-medium">{stats.age_analysis?.average_age_months || 'N/A'}</span>
+                      </div>
+                      
+                      <div className="text-sm text-gray-700 bg-green-50 p-3 rounded-lg">
+                        💡 Longer credit history improves your credit score
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Portfolio Insights Row */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  
+                  {/* Issuer Breakdown */}
+                  <div className="glass-card">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Portfolio Diversification</h3>
+                    {renderIssuerBreakdown()}
+                    {Object.keys(stats.issuer_breakdown || {}).length > 0 && (
+                      <div className="mt-4 text-sm text-gray-700 bg-purple-50 p-3 rounded-lg">
+                        💡 You have cards from {Object.keys(stats.issuer_breakdown || {}).length} different issuers
+                      </div>
+                    )}
+                  </div>
+
+                  {/* High Utilization Alerts */}
+                  <div className="glass-card">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Utilization Alerts</h3>
+                    {stats.top_utilization_cards?.length > 0 ? (
+                      <div className="space-y-3">
+                        {stats.top_utilization_cards.map((card, index) => (
+                          <div key={index} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
+                            <div>
+                              <p className="font-medium text-red-800">{card.card_name}</p>
+                              <p className="text-sm text-red-600">{formatCurrency(card.balance)} / {formatCurrency(card.limit)}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-lg font-bold text-red-800">{card.utilization}%</p>
+                              <p className="text-xs text-red-600">HIGH</p>
+                            </div>
+                          </div>
+                        ))}
+                        <div className="text-sm text-gray-700 bg-yellow-50 p-3 rounded-lg">
+                          ⚠️ Consider paying down balances above 30% utilization
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <div className="bg-green-100 w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center">
+                          <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
+                        <p className="text-gray-600">All cards have healthy utilization!</p>
+                        <p className="text-sm text-gray-500">Keep utilization below 30% for optimal credit scores</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+
             {creditCards.length === 0 && (
               <div className="text-center py-12">
                 <div className="bg-gradient-to-r from-blue-400 to-purple-400 w-24 h-24 rounded-full mx-auto mb-6 flex items-center justify-center">
@@ -257,7 +459,7 @@ function App() {
                   </svg>
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">No Credit Cards Found</h3>
-                <p className="text-gray-600 mb-6">Upload your credit report to get started</p>
+                <p className="text-gray-600 mb-6">Upload your credit report to unlock advanced analytics and optimization insights</p>
                 <button
                   onClick={() => setActiveTab('upload')}
                   className="btn-primary"
@@ -432,6 +634,15 @@ function App() {
                         </div>
                       )}
 
+                      {card.annual_fee !== null && card.annual_fee !== undefined && (
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">Annual Fee</span>
+                          <span className={`text-sm font-medium ${card.annual_fee > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                            {card.annual_fee > 0 ? formatCurrency(card.annual_fee) : 'No Fee'}
+                          </span>
+                        </div>
+                      )}
+
                       {card.credit_limit && card.current_balance !== null && (
                         <div className="pt-2">
                           <div className="flex justify-between text-sm mb-1">
@@ -440,7 +651,11 @@ function App() {
                           </div>
                           <div className="w-full bg-gray-200 rounded-full h-2">
                             <div 
-                              className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-300"
+                              className={`h-2 rounded-full transition-all duration-300 ${
+                                (card.current_balance / card.credit_limit) > 0.3 
+                                  ? 'bg-gradient-to-r from-red-500 to-red-600' 
+                                  : 'bg-gradient-to-r from-blue-500 to-purple-500'
+                              }`}
                               style={{ width: `${Math.min((card.current_balance / card.credit_limit) * 100, 100)}%` }}
                             ></div>
                           </div>

@@ -9,13 +9,14 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 import tempfile
 import shutil
 import pdfplumber
 from openai import OpenAI
 import json
 import re
+from collections import defaultdict
 
 
 ROOT_DIR = Path(__file__).parent
@@ -46,6 +47,7 @@ class CreditCard(BaseModel):
     status: str  # "Active" or "Closed"
     credit_limit: Optional[float] = None
     current_balance: Optional[float] = None
+    annual_fee: Optional[float] = None
     account_type: str = "Credit Card"
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -86,12 +88,13 @@ async def parse_credit_cards_with_gpt4o(text: str) -> List[dict]:
 
 For each credit card account, extract:
 - card_name: The name/product name of the credit card (e.g., "Chase Freedom", "Capital One Venture", "Discover it")
-- issuer: The bank/company name (e.g., "Chase", "Capital One", "Discover", "American Express")
+- issuer: The bank/company name (e.g., "Chase", "Capital One", "Discover", "American Express", "Citi", "Bank of America")
 - account_number: Last 4 digits if available, otherwise use "****" 
 - open_date: Date account was opened (format as YYYY-MM-DD if possible, or MM/YYYY)
 - status: "Active" or "Closed" based on account status
 - credit_limit: Credit limit amount as a number (without $, commas)
 - current_balance: Current balance as a number (without $, commas)
+- annual_fee: Annual fee amount as a number (without $, commas) - if not explicitly stated, use common knowledge for the card
 
 Return ONLY a JSON array of objects. Do not include any other text.
 If no credit cards are found, return an empty array [].
@@ -105,7 +108,8 @@ Example format:
     "open_date": "2020-03-15",
     "status": "Active",
     "credit_limit": 5000,
-    "current_balance": 1250
+    "current_balance": 1250,
+    "annual_fee": 0
   }
 ]"""
 
@@ -133,6 +137,171 @@ Example format:
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing with OpenAI: {str(e)}")
+
+
+def calculate_5_24_status(cards: List[dict]) -> dict:
+    """Calculate 5/24 eligibility for Chase cards"""
+    try:
+        # Count cards opened in last 24 months
+        cutoff_date = datetime.now() - timedelta(days=24*30)  # Approximate 24 months
+        recent_cards = []
+        
+        for card in cards:
+            if card.get('status', '').lower() == 'active':
+                open_date_str = card.get('open_date', '')
+                if open_date_str and open_date_str != 'Unknown':
+                    try:
+                        # Try different date formats
+                        for fmt in ['%Y-%m-%d', '%m/%Y', '%Y-%m', '%m-%d-%Y']:
+                            try:
+                                if fmt == '%m/%Y':
+                                    open_date = datetime.strptime(open_date_str, fmt)
+                                    # Assume first day of month for MM/YYYY format
+                                    open_date = open_date.replace(day=1)
+                                else:
+                                    open_date = datetime.strptime(open_date_str, fmt)
+                                
+                                if open_date >= cutoff_date:
+                                    recent_cards.append({
+                                        'card_name': card.get('card_name', 'Unknown'),
+                                        'issuer': card.get('issuer', 'Unknown'),
+                                        'open_date': open_date_str
+                                    })
+                                break
+                            except ValueError:
+                                continue
+                    except:
+                        continue
+        
+        cards_in_24_months = len(recent_cards)
+        is_eligible = cards_in_24_months < 5
+        remaining_slots = max(0, 5 - cards_in_24_months)
+        
+        return {
+            "cards_in_24_months": cards_in_24_months,
+            "is_eligible": is_eligible,
+            "remaining_slots": remaining_slots,
+            "recent_cards": recent_cards,
+            "status": "Eligible" if is_eligible else "Not Eligible",
+            "recommendation": f"You can apply for {remaining_slots} more Chase cards" if is_eligible else "Wait for older cards to age out of 24-month window"
+        }
+    except Exception as e:
+        return {
+            "cards_in_24_months": 0,
+            "is_eligible": True,
+            "remaining_slots": 5,
+            "recent_cards": [],
+            "status": "Unknown",
+            "recommendation": "Unable to calculate 5/24 status"
+        }
+
+
+def analyze_credit_portfolio(cards: List[dict]) -> dict:
+    """Analyze credit card portfolio for insights"""
+    if not cards:
+        return {}
+    
+    # Cards by issuer
+    issuer_breakdown = defaultdict(int)
+    issuer_limits = defaultdict(float)
+    
+    # Active vs closed analysis
+    active_cards = [c for c in cards if c.get('status', '').lower() == 'active']
+    closed_cards = [c for c in cards if c.get('status', '').lower() == 'closed']
+    
+    # Annual fees analysis
+    total_annual_fees = 0
+    fee_cards = []
+    no_fee_cards = []
+    
+    # Credit utilization by card
+    utilization_breakdown = []
+    
+    # Age analysis
+    oldest_card_date = None
+    newest_card_date = None
+    
+    for card in cards:
+        issuer = card.get('issuer', 'Unknown')
+        issuer_breakdown[issuer] += 1
+        
+        if card.get('credit_limit'):
+            issuer_limits[issuer] += card.get('credit_limit', 0)
+        
+        # Annual fee analysis
+        annual_fee = card.get('annual_fee', 0) or 0
+        total_annual_fees += annual_fee
+        
+        if annual_fee > 0:
+            fee_cards.append({
+                'card_name': card.get('card_name', 'Unknown'),
+                'annual_fee': annual_fee
+            })
+        else:
+            no_fee_cards.append(card.get('card_name', 'Unknown'))
+        
+        # Utilization breakdown
+        if card.get('credit_limit') and card.get('current_balance') is not None:
+            utilization = (card.get('current_balance', 0) / card.get('credit_limit', 1)) * 100
+            utilization_breakdown.append({
+                'card_name': card.get('card_name', 'Unknown'),
+                'utilization': round(utilization, 1),
+                'balance': card.get('current_balance', 0),
+                'limit': card.get('credit_limit', 0)
+            })
+        
+        # Age analysis
+        open_date_str = card.get('open_date', '')
+        if open_date_str and open_date_str != 'Unknown':
+            try:
+                for fmt in ['%Y-%m-%d', '%m/%Y', '%Y-%m', '%m-%d-%Y']:
+                    try:
+                        if fmt == '%m/%Y':
+                            open_date = datetime.strptime(open_date_str, fmt)
+                            open_date = open_date.replace(day=1)
+                        else:
+                            open_date = datetime.strptime(open_date_str, fmt)
+                        
+                        if oldest_card_date is None or open_date < oldest_card_date:
+                            oldest_card_date = open_date
+                        if newest_card_date is None or open_date > newest_card_date:
+                            newest_card_date = open_date
+                        break
+                    except ValueError:
+                        continue
+            except:
+                continue
+    
+    # Calculate average account age
+    avg_age_months = None
+    if oldest_card_date:
+        total_months = (datetime.now() - oldest_card_date).days / 30.44
+        avg_age_months = round(total_months, 1)
+    
+    return {
+        "issuer_breakdown": dict(issuer_breakdown),
+        "issuer_limits": dict(issuer_limits),
+        "annual_fees": {
+            "total": total_annual_fees,
+            "fee_cards": fee_cards,
+            "no_fee_cards": no_fee_cards,
+            "fee_cards_count": len(fee_cards),
+            "no_fee_cards_count": len(no_fee_cards)
+        },
+        "utilization_breakdown": sorted(utilization_breakdown, key=lambda x: x['utilization'], reverse=True),
+        "age_analysis": {
+            "oldest_card_date": oldest_card_date.strftime('%Y-%m-%d') if oldest_card_date else None,
+            "newest_card_date": newest_card_date.strftime('%Y-%m-%d') if newest_card_date else None,
+            "average_age_months": avg_age_months,
+            "average_age_years": round(avg_age_months / 12, 1) if avg_age_months else None
+        },
+        "portfolio_stats": {
+            "total_cards": len(cards),
+            "active_cards": len(active_cards),
+            "closed_cards": len(closed_cards),
+            "unique_issuers": len(issuer_breakdown)
+        }
+    }
 
 
 # API Routes
@@ -175,7 +344,8 @@ async def upload_credit_report(file: UploadFile = File(...)):
                     open_date=card_data.get('open_date', 'Unknown'),
                     status=card_data.get('status', 'Unknown'),
                     credit_limit=card_data.get('credit_limit'),
-                    current_balance=card_data.get('current_balance')
+                    current_balance=card_data.get('current_balance'),
+                    annual_fee=card_data.get('annual_fee', 0)
                 )
                 
                 # Insert into database
@@ -223,30 +393,65 @@ async def get_credit_cards():
 
 @api_router.get("/dashboard-stats")
 async def get_dashboard_stats():
-    """Get dashboard statistics"""
+    """Get comprehensive dashboard statistics"""
     try:
         # Get all cards
         cards = await db.credit_cards.find().to_list(1000)
+        
+        if not cards:
+            return {
+                "total_cards": 0,
+                "active_cards": 0,
+                "closed_cards": 0,
+                "average_age_years": "N/A",
+                "total_credit_limit": 0,
+                "total_balance": 0,
+                "credit_utilization": 0,
+                "total_annual_fees": 0,
+                "five_24_status": {
+                    "cards_in_24_months": 0,
+                    "is_eligible": True,
+                    "remaining_slots": 5,
+                    "status": "Eligible",
+                    "recommendation": "No cards found to analyze"
+                },
+                "portfolio_analysis": {},
+                "top_utilization_cards": [],
+                "issuer_breakdown": {},
+                "age_analysis": {}
+            }
         
         total_cards = len(cards)
         active_cards = len([card for card in cards if card.get('status', '').lower() == 'active'])
         closed_cards = total_cards - active_cards
         
-        # Calculate average age (simplified - just count of cards for now)
-        average_age_years = "N/A"
-        
         # Total credit limit and balance
         total_credit_limit = sum([card.get('credit_limit', 0) or 0 for card in cards])
         total_balance = sum([card.get('current_balance', 0) or 0 for card in cards])
+        
+        # Calculate 5/24 status
+        five_24_status = calculate_5_24_status(cards)
+        
+        # Analyze portfolio
+        portfolio_analysis = analyze_credit_portfolio(cards)
+        
+        # Get top utilization cards (for alerts)
+        high_util_cards = [card for card in portfolio_analysis.get('utilization_breakdown', []) if card['utilization'] > 30]
         
         return {
             "total_cards": total_cards,
             "active_cards": active_cards,
             "closed_cards": closed_cards,
-            "average_age_years": average_age_years,
+            "average_age_years": portfolio_analysis.get('age_analysis', {}).get('average_age_years', 'N/A'),
             "total_credit_limit": total_credit_limit,
             "total_balance": total_balance,
-            "credit_utilization": round((total_balance / total_credit_limit * 100) if total_credit_limit > 0 else 0, 1)
+            "credit_utilization": round((total_balance / total_credit_limit * 100) if total_credit_limit > 0 else 0, 1),
+            "total_annual_fees": portfolio_analysis.get('annual_fees', {}).get('total', 0),
+            "five_24_status": five_24_status,
+            "portfolio_analysis": portfolio_analysis,
+            "top_utilization_cards": high_util_cards[:3],  # Top 3 highest utilization
+            "issuer_breakdown": portfolio_analysis.get('issuer_breakdown', {}),
+            "age_analysis": portfolio_analysis.get('age_analysis', {})
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calculating stats: {str(e)}")
