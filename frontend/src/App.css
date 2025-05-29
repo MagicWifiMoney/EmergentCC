@@ -1,38 +1,142 @@
-.App {
-    text-align: center;
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* Glassmorphism Effects */
+.glass-card {
+  @apply bg-white/80 backdrop-blur-lg border border-white/30 rounded-2xl p-6 shadow-xl;
 }
 
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+.credit-card-item {
+  @apply bg-white/80 backdrop-blur-lg border border-white/30 rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
+.upload-zone {
+  @apply border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-all duration-300 hover:border-blue-400 hover:bg-blue-50/50;
 }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+.btn-primary {
+  @apply bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-xl font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200;
 }
 
-.App-link {
-    color: #61dafb;
+.hover-lift {
+  @apply transform hover:-translate-y-1 transition-all duration-200;
 }
 
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+/* Custom animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.6s ease-out;
+}
+
+/* Gradient text */
+.gradient-text {
+  @apply bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-gray-100 rounded-full;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gradient-to-r from-blue-500 to-purple-500 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply from-blue-600 to-purple-600;
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+  .glass-card {
+    @apply p-4 rounded-xl;
+  }
+  
+  .credit-card-item {
+    @apply p-4 rounded-xl;
+  }
+  
+  .upload-zone {
+    @apply p-8;
+  }
+}
+
+/* Loading states */
+.loading-shimmer {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Focus states for accessibility */
+button:focus,
+input:focus {
+  @apply ring-2 ring-blue-500 ring-offset-2 outline-none;
+}
+
+/* Card hover effects */
+.credit-card-item:hover {
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+/* Status indicators */
+.status-active {
+  @apply bg-green-100 text-green-800 border border-green-200;
+}
+
+.status-closed {
+  @apply bg-gray-100 text-gray-800 border border-gray-200;
+}
+
+/* Utilization progress bars */
+.utilization-low {
+  @apply bg-green-500;
+}
+
+.utilization-medium {
+  @apply bg-yellow-500;
+}
+
+.utilization-high {
+  @apply bg-red-500;
+}
+
+/* Enhanced upload zone */
+.upload-zone.drag-active {
+  @apply border-blue-500 bg-blue-50 transform scale-105;
+}
+
+/* Mobile optimizations */
+@media (max-width: 640px) {
+  .glass-card {
+    @apply mx-4;
+  }
+  
+  .btn-primary {
+    @apply px-4 py-2 text-sm;
+  }
 }
