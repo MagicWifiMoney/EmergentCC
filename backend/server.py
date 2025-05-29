@@ -391,6 +391,20 @@ async def get_credit_cards():
     cards = await db.credit_cards.find().to_list(1000)
     return [CreditCard(**card) for card in cards]
 
+@api_router.post("/credit-cards", response_model=CreditCard)
+async def create_credit_card(card: CreditCard):
+    """Create a new credit card (for testing purposes)"""
+    try:
+        # Generate new ID if not provided
+        if not card.id:
+            card.id = str(uuid.uuid4())
+        
+        # Insert into database
+        await db.credit_cards.insert_one(card.dict())
+        return card
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating credit card: {str(e)}")
+
 @api_router.get("/dashboard-stats")
 async def get_dashboard_stats():
     """Get comprehensive dashboard statistics"""
