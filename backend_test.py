@@ -200,10 +200,83 @@ class CreditCardAPITester:
         
     def create_test_credit_cards(self):
         """Create test credit cards with data for testing analytics"""
-        # Since there's no direct POST endpoint for creating cards,
-        # we'll use a mock PDF upload to create cards
-        print("⚠️ No direct POST endpoint for creating cards. Testing dashboard with empty state.")
-        return True
+        test_cards = [
+            {
+                "id": str(uuid.uuid4()),
+                "card_name": "Chase Sapphire Preferred",
+                "issuer": "Chase",
+                "account_number": "1234",
+                "open_date": (datetime.now().replace(year=datetime.now().year - 1)).strftime("%Y-%m-%d"),
+                "status": "Active",
+                "credit_limit": 10000,
+                "current_balance": 2500,
+                "annual_fee": 95,
+                "account_type": "Credit Card"
+            },
+            {
+                "id": str(uuid.uuid4()),
+                "card_name": "Amex Gold Card",
+                "issuer": "American Express",
+                "account_number": "5678",
+                "open_date": (datetime.now().replace(year=datetime.now().year - 3)).strftime("%Y-%m-%d"),
+                "status": "Active",
+                "credit_limit": 15000,
+                "current_balance": 6000,
+                "annual_fee": 250,
+                "account_type": "Credit Card"
+            },
+            {
+                "id": str(uuid.uuid4()),
+                "card_name": "Discover It",
+                "issuer": "Discover",
+                "account_number": "9012",
+                "open_date": (datetime.now().replace(year=datetime.now().year - 5)).strftime("%Y-%m-%d"),
+                "status": "Active",
+                "credit_limit": 8000,
+                "current_balance": 1000,
+                "annual_fee": 0,
+                "account_type": "Credit Card"
+            },
+            {
+                "id": str(uuid.uuid4()),
+                "card_name": "Capital One Venture",
+                "issuer": "Capital One",
+                "account_number": "3456",
+                "open_date": (datetime.now().replace(month=max(1, datetime.now().month - 2))).strftime("%Y-%m-%d"),
+                "status": "Active",
+                "credit_limit": 12000,
+                "current_balance": 500,
+                "annual_fee": 95,
+                "account_type": "Credit Card"
+            },
+            {
+                "id": str(uuid.uuid4()),
+                "card_name": "Citi Double Cash",
+                "issuer": "Citi",
+                "account_number": "7890",
+                "open_date": (datetime.now().replace(year=datetime.now().year - 2)).strftime("%Y-%m-%d"),
+                "status": "Active",
+                "credit_limit": 7500,
+                "current_balance": 3000,
+                "annual_fee": 0,
+                "account_type": "Credit Card"
+            }
+        ]
+        
+        success_count = 0
+        for card in test_cards:
+            success, _ = self.run_test(
+                f"Create Test Card: {card['card_name']}",
+                "POST",
+                "api/credit-cards",
+                200,
+                data=card
+            )
+            if success:
+                success_count += 1
+        
+        print(f"✅ Created {success_count}/{len(test_cards)} test credit cards")
+        return success_count == len(test_cards)
 
 def main():
     # Get the backend URL from the frontend .env file
