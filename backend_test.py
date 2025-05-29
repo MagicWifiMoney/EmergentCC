@@ -1,47 +1,55 @@
+
 import requests
-import unittest
 import sys
+import os
 import json
-import uuid
 from datetime import datetime
+import time
 
 class CreditCardAPITester:
-    def __init__(self, base_url):
+    def __init__(self, base_url="https://b24cc02b-55f7-4d08-a4fd-c74e2c6f2cd5.preview.emergentagent.com"):
         self.base_url = base_url
+        self.access_token = None
+        self.refresh_token = None
         self.tests_run = 0
         self.tests_passed = 0
+        self.cookies = {}
 
-    def run_test(self, name, method, endpoint, expected_status, data=None):
+    def run_test(self, name, method, endpoint, expected_status, data=None, files=None, auth=True):
         """Run a single API test"""
-        url = f"{self.base_url}/{endpoint}"
-        headers = {'Content-Type': 'application/json'}
+        url = f"{self.base_url}{endpoint}"
+        headers = {'Content-Type': 'application/json'} if not files else {}
         
+        if auth and self.access_token:
+            headers['Authorization'] = f'Bearer {self.access_token}'
+
         self.tests_run += 1
         print(f"\n🔍 Testing {name}...")
         
         try:
             if method == 'GET':
-                response = requests.get(url, headers=headers)
+                response = requests.get(url, headers=headers, cookies=self.cookies)
             elif method == 'POST':
-                response = requests.post(url, json=data, headers=headers)
+                if files:
+                    response = requests.post(url, files=files, headers=headers, cookies=self.cookies)
+                else:
+                    response = requests.post(url, json=data, headers=headers, cookies=self.cookies)
             elif method == 'DELETE':
-                response = requests.delete(url, headers=headers)
+                response = requests.delete(url, headers=headers, cookies=self.cookies)
             
             success = response.status_code == expected_status
+            
             if success:
                 self.tests_passed += 1
                 print(f"✅ Passed - Status: {response.status_code}")
                 try:
-                    return success, response.json()
-                except:
+                    return success, response.json() if response.text else {}
+                except json.JSONDecodeError:
                     return success, {}
             else:
                 print(f"❌ Failed - Expected {expected_status}, got {response.status_code}")
-                try:
-                    print(f"Response: {response.text}")
-                    return False, response.json()
-                except:
-                    return False, {}
+                print(f"Response: {response.text}")
+                return False, {}
 
         except Exception as e:
             print(f"❌ Failed - Error: {str(e)}")
@@ -49,300 +57,99 @@ class CreditCardAPITester:
 
     def test_root_endpoint(self):
         """Test the root API endpoint"""
-        success, response = self.run_test(
+        return self.run_test(
             "Root API Endpoint",
             "GET",
-            "api",
-            200
+            "/api",
+            200,
+            auth=False
         )
-        if success:
-            print(f"Response: {response}")
-        return success
 
-    def test_get_credit_cards(self):
-        """Test getting all credit cards"""
-        success, response = self.run_test(
-            "Get Credit Cards",
+    def test_google_login_redirect(self):
+        """Test Google login redirect"""
+        success, _ = self.run_test(
+            "Google Login Redirect",
             "GET",
-            "api/credit-cards",
-            200
+            "/login/google",
+            200,
+            auth=False
         )
-        if success:
-            print(f"Found {len(response)} credit cards")
-        return success, response
+        return success
 
-    def test_get_dashboard_stats(self):
-        """Test getting dashboard statistics"""
-        success, response = self.run_test(
-            "Get Dashboard Stats",
+    def test_me_endpoint_unauthenticated(self):
+        """Test /me endpoint without authentication"""
+        success, _ = self.run_test(
+            "Me Endpoint (Unauthenticated)",
             "GET",
-            "api/dashboard-stats",
-            200
+            "/me",
+            401,
+            auth=False
         )
-        if success:
-            print(f"Dashboard Stats: {json.dumps(response, indent=2)}")
-            
-            # Verify all required fields are present
-            required_fields = [
-                "total_cards", "active_cards", "closed_cards", 
-                "average_age_years", "total_credit_limit", "total_balance", 
-                "credit_utilization", "total_annual_fees", "five_24_status",
-                "portfolio_analysis", "top_utilization_cards", "issuer_breakdown",
-                "age_analysis"
-            ]
-            
-            missing_fields = [field for field in required_fields if field not in response]
-            if missing_fields:
-                print(f"❌ Missing required fields in dashboard stats: {missing_fields}")
-                self.tests_run += 1  # Count as an additional test
-                return False
-            
-            # Verify 5/24 status fields
-            if "five_24_status" in response:
-                five_24_fields = [
-                    "cards_in_24_months", "is_eligible", "remaining_slots",
-                    "status", "recommendation"
-                ]
-                missing_five_24_fields = [field for field in five_24_fields if field not in response["five_24_status"]]
-                if missing_five_24_fields:
-                    print(f"❌ Missing required fields in 5/24 status: {missing_five_24_fields}")
-                    self.tests_run += 1  # Count as an additional test
-                    return False
-                else:
-                    print("✅ 5/24 Checker data structure verified")
-                    self.tests_passed += 1  # Count as an additional test
-            
-            # Verify annual fees data
-            if "portfolio_analysis" in response and "annual_fees" in response["portfolio_analysis"]:
-                annual_fees_fields = [
-                    "total", "fee_cards", "no_fee_cards", 
-                    "fee_cards_count", "no_fee_cards_count"
-                ]
-                annual_fees = response["portfolio_analysis"]["annual_fees"]
-                missing_annual_fees_fields = [field for field in annual_fees_fields if field not in annual_fees]
-                if missing_annual_fees_fields:
-                    print(f"❌ Missing required fields in annual fees: {missing_annual_fees_fields}")
-                    self.tests_run += 1  # Count as an additional test
-                    return False
-                else:
-                    print("✅ Annual Fees data structure verified")
-                    self.tests_passed += 1  # Count as an additional test
-            
-            # Verify age analysis data
-            if "age_analysis" in response:
-                age_analysis_fields = [
-                    "oldest_card_date", "newest_card_date", 
-                    "average_age_months", "average_age_years"
-                ]
-                missing_age_fields = [field for field in age_analysis_fields if field not in response["age_analysis"]]
-                if missing_age_fields:
-                    print(f"❌ Missing required fields in age analysis: {missing_age_fields}")
-                    self.tests_run += 1  # Count as an additional test
-                    return False
-                else:
-                    print("✅ Credit Age Analysis data structure verified")
-                    self.tests_passed += 1  # Count as an additional test
-            
-            # Verify issuer breakdown
-            if "issuer_breakdown" in response:
-                if isinstance(response["issuer_breakdown"], dict):
-                    print("✅ Portfolio Diversification data structure verified")
-                    self.tests_passed += 1  # Count as an additional test
-                else:
-                    print("❌ Issuer breakdown is not a dictionary")
-                    self.tests_run += 1  # Count as an additional test
-                    return False
-            
-            # Verify utilization alerts
-            if "top_utilization_cards" in response:
-                if isinstance(response["top_utilization_cards"], list):
-                    if len(response["top_utilization_cards"]) > 0:
-                        utilization_card_fields = ["card_name", "utilization", "balance", "limit"]
-                        sample_card = response["top_utilization_cards"][0]
-                        missing_util_fields = [field for field in utilization_card_fields if field not in sample_card]
-                        if missing_util_fields:
-                            print(f"❌ Missing required fields in utilization cards: {missing_util_fields}")
-                            self.tests_run += 1  # Count as an additional test
-                            return False
-                    print("✅ Utilization Alerts data structure verified")
-                    self.tests_passed += 1  # Count as an additional test
-                else:
-                    print("❌ Top utilization cards is not a list")
-                    self.tests_run += 1  # Count as an additional test
-                    return False
-            
-            return True
         return success
 
-    def test_clear_all_cards(self):
-        """Test clearing all credit cards"""
-        success, response = self.run_test(
-            "Clear All Cards",
-            "DELETE",
-            "api/credit-cards",
-            200
+    def test_protected_endpoint_unauthenticated(self):
+        """Test protected endpoint without authentication"""
+        success, _ = self.run_test(
+            "Protected Endpoint (Unauthenticated)",
+            "GET",
+            "/api/credit-cards",
+            401,
+            auth=False
         )
-        if success:
-            print(f"Response: {response}")
         return success
+
+    def test_create_card_unauthenticated(self):
+        """Test creating a card without authentication"""
+        card_data = {
+            "card_name": "Test Card",
+            "issuer": "Test Bank",
+            "account_number": "1234",
+            "open_date": "2023-01-01",
+            "status": "Active",
+            "credit_limit": 5000,
+            "current_balance": 1000,
+            "annual_fee": 0
+        }
         
-    def test_delete_card(self, card_id):
-        """Test deleting a specific credit card"""
-        success, response = self.run_test(
-            f"Delete Card (ID: {card_id})",
-            "DELETE",
-            f"api/credit-cards/{card_id}",
-            200
+        success, _ = self.run_test(
+            "Create Card (Unauthenticated)",
+            "POST",
+            "/api/credit-cards",
+            401,
+            data=card_data,
+            auth=False
         )
-        if success:
-            print(f"Response: {response}")
         return success
-        
-    def create_test_credit_cards(self):
-        """Create test credit cards with data for testing analytics"""
-        test_cards = [
-            {
-                "id": str(uuid.uuid4()),
-                "card_name": "Chase Sapphire Preferred",
-                "issuer": "Chase",
-                "account_number": "1234",
-                "open_date": (datetime.now().replace(year=datetime.now().year - 1)).strftime("%Y-%m-%d"),
-                "status": "Active",
-                "credit_limit": 10000,
-                "current_balance": 2500,
-                "annual_fee": 95,
-                "account_type": "Credit Card"
-            },
-            {
-                "id": str(uuid.uuid4()),
-                "card_name": "Amex Gold Card",
-                "issuer": "American Express",
-                "account_number": "5678",
-                "open_date": (datetime.now().replace(year=datetime.now().year - 3)).strftime("%Y-%m-%d"),
-                "status": "Active",
-                "credit_limit": 15000,
-                "current_balance": 6000,
-                "annual_fee": 250,
-                "account_type": "Credit Card"
-            },
-            {
-                "id": str(uuid.uuid4()),
-                "card_name": "Discover It",
-                "issuer": "Discover",
-                "account_number": "9012",
-                "open_date": (datetime.now().replace(year=datetime.now().year - 5)).strftime("%Y-%m-%d"),
-                "status": "Active",
-                "credit_limit": 8000,
-                "current_balance": 1000,
-                "annual_fee": 0,
-                "account_type": "Credit Card"
-            },
-            {
-                "id": str(uuid.uuid4()),
-                "card_name": "Capital One Venture",
-                "issuer": "Capital One",
-                "account_number": "3456",
-                "open_date": (datetime.now().replace(month=max(1, datetime.now().month - 2))).strftime("%Y-%m-%d"),
-                "status": "Active",
-                "credit_limit": 12000,
-                "current_balance": 500,
-                "annual_fee": 95,
-                "account_type": "Credit Card"
-            },
-            {
-                "id": str(uuid.uuid4()),
-                "card_name": "Citi Double Cash",
-                "issuer": "Citi",
-                "account_number": "7890",
-                "open_date": (datetime.now().replace(year=datetime.now().year - 2)).strftime("%Y-%m-%d"),
-                "status": "Active",
-                "credit_limit": 7500,
-                "current_balance": 3000,
-                "annual_fee": 0,
-                "account_type": "Credit Card"
-            }
-        ]
-        
-        success_count = 0
-        for card in test_cards:
-            success, _ = self.run_test(
-                f"Create Test Card: {card['card_name']}",
-                "POST",
-                "api/credit-cards",
-                200,
-                data=card
-            )
-            if success:
-                success_count += 1
-        
-        print(f"✅ Created {success_count}/{len(test_cards)} test credit cards")
-        return success_count == len(test_cards)
+
+    def test_dashboard_stats_unauthenticated(self):
+        """Test dashboard stats without authentication"""
+        success, _ = self.run_test(
+            "Dashboard Stats (Unauthenticated)",
+            "GET",
+            "/api/dashboard-stats",
+            401,
+            auth=False
+        )
+        return success
 
 def main():
-    # Get the backend URL from the frontend .env file
-    backend_url = "https://b24cc02b-55f7-4d08-a4fd-c74e2c6f2cd5.preview.emergentagent.com"
+    # Setup
+    tester = CreditCardAPITester()
     
-    print(f"Testing API at: {backend_url}")
-    
-    # Setup tester
-    tester = CreditCardAPITester(backend_url)
-    
-    # Run tests
-    print("\n=== Testing Basic API Connectivity ===")
-    if not tester.test_root_endpoint():
-        print("❌ Root API endpoint test failed, stopping tests")
-        return 1
-    
-    print("\n=== Testing Credit Card Endpoints ===")
-    cards_success, cards = tester.test_get_credit_cards()
-    if not cards_success:
-        print("❌ Get credit cards test failed")
-    
-    # Clear existing cards to start with a clean state
-    if cards_success and len(cards) > 0:
-        print("\n=== Clearing Existing Cards ===")
-        if not tester.test_clear_all_cards():
-            print("❌ Clear all cards test failed")
-        
-        # Verify cards were cleared
-        print("\n=== Verifying Cards Cleared ===")
-        verify_success, verify_cards = tester.test_get_credit_cards()
-        if verify_success and len(verify_cards) == 0:
-            print("✅ All cards successfully cleared")
-        else:
-            print("❌ Cards were not cleared properly")
-    
-    # Create test cards for analytics testing
-    print("\n=== Creating Test Credit Cards ===")
-    if not tester.create_test_credit_cards():
-        print("❌ Failed to create all test cards")
-    
-    # Test dashboard stats with test data
-    print("\n=== Testing Enhanced Dashboard Stats ===")
-    if not tester.test_get_dashboard_stats():
-        print("❌ Get dashboard stats test failed")
-    
-    # Test individual card deletion
-    print("\n=== Testing Individual Card Deletion ===")
-    success, cards = tester.test_get_credit_cards()
-    if success and len(cards) > 0:
-        card_id = cards[0]["id"]
-        if not tester.test_delete_card(card_id):
-            print(f"❌ Failed to delete card with ID: {card_id}")
-        else:
-            # Verify card was deleted
-            verify_success, verify_cards = tester.test_get_credit_cards()
-            if verify_success and len(verify_cards) == len(cards) - 1:
-                print("✅ Card successfully deleted")
-            else:
-                print("❌ Card was not deleted properly")
-    
-    # Clean up - clear all cards
-    print("\n=== Final Cleanup ===")
-    tester.test_clear_all_cards()
+    # Run tests for unauthenticated access
+    print("\n===== Testing Unauthenticated Access =====")
+    tester.test_root_endpoint()
+    tester.test_google_login_redirect()
+    tester.test_me_endpoint_unauthenticated()
+    tester.test_protected_endpoint_unauthenticated()
+    tester.test_create_card_unauthenticated()
+    tester.test_dashboard_stats_unauthenticated()
     
     # Print results
     print(f"\n📊 Tests passed: {tester.tests_passed}/{tester.tests_run}")
+    print("\n⚠️ Note: Full authentication flow tests require browser interaction")
+    print("   Use the browser automation tool to test the complete OAuth flow")
+    
     return 0 if tester.tests_passed == tester.tests_run else 1
 
 if __name__ == "__main__":
