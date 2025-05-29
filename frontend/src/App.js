@@ -23,7 +23,7 @@ const AuthProvider = ({ children }) => {
     try {
       const token = Cookies.get('access_token');
       if (token) {
-        const response = await axios.get(`${API_BASE_URL}/me`, {
+        const response = await axios.get(`${API_BASE_URL}/api/me`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         setUser(response.data);
