@@ -417,7 +417,7 @@ def analyze_credit_portfolio(cards: List[dict]) -> dict:
 # Authentication Routes
 @auth_router.get("/login/google")
 async def google_login(request: Request):
-    redirect_uri = request.url_for('google_auth')
+    redirect_uri = f"{FRONTEND_URL}/auth/google"
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 @auth_router.get("/auth/google")
@@ -456,7 +456,7 @@ async def google_auth(request: Request):
         refresh_token = create_refresh_token(data={"sub": user_data["email"]})
         
         # Create response and set cookies
-        response = RedirectResponse(url="/")
+        response = RedirectResponse(url=f"{FRONTEND_URL}/dashboard")
         response.set_cookie(
             key="access_token",
             value=access_token,
