@@ -68,8 +68,8 @@ oauth.register(
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
-# Auth router (no prefix for OAuth callbacks)
-auth_router = APIRouter()
+# Auth router (also needs /api prefix for ingress routing)
+auth_router = APIRouter(prefix="/api")
 
 
 # Define Models
