@@ -413,12 +413,41 @@ async def get_dashboard_stats():
                     "is_eligible": True,
                     "remaining_slots": 5,
                     "status": "Eligible",
-                    "recommendation": "No cards found to analyze"
+                    "recommendation": "No cards found to analyze",
+                    "recent_cards": []
                 },
-                "portfolio_analysis": {},
+                "portfolio_analysis": {
+                    "issuer_breakdown": {},
+                    "issuer_limits": {},
+                    "annual_fees": {
+                        "total": 0,
+                        "fee_cards": [],
+                        "no_fee_cards": [],
+                        "fee_cards_count": 0,
+                        "no_fee_cards_count": 0
+                    },
+                    "utilization_breakdown": [],
+                    "age_analysis": {
+                        "oldest_card_date": None,
+                        "newest_card_date": None,
+                        "average_age_months": None,
+                        "average_age_years": None
+                    },
+                    "portfolio_stats": {
+                        "total_cards": 0,
+                        "active_cards": 0,
+                        "closed_cards": 0,
+                        "unique_issuers": 0
+                    }
+                },
                 "top_utilization_cards": [],
                 "issuer_breakdown": {},
-                "age_analysis": {}
+                "age_analysis": {
+                    "oldest_card_date": None,
+                    "newest_card_date": None,
+                    "average_age_months": None,
+                    "average_age_years": None
+                }
             }
         
         total_cards = len(cards)
