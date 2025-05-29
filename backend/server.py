@@ -51,12 +51,18 @@ app.add_middleware(SessionMiddleware, secret_key=JWT_SECRET)
 # OAuth Configuration
 config = Config()
 oauth = OAuth()
+
+# Get the current preview URL for redirect
+import os
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://b24cc02b-55f7-4d08-a4fd-c74e2c6f2cd5.preview.emergentagent.com')
+
 oauth.register(
     name='google',
     client_id=os.environ.get('GOOGLE_CLIENT_ID'),
     client_secret=os.environ.get('GOOGLE_CLIENT_SECRET'),
     server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
-    client_kwargs={'scope': 'openid email profile'}
+    client_kwargs={'scope': 'openid email profile'},
+    authorize_redirect_uri=f"{FRONTEND_URL}/auth/google"
 )
 
 # Create a router with the /api prefix
