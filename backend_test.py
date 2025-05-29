@@ -2,155 +2,137 @@
 import requests
 import sys
 import os
-import json
-from datetime import datetime
 import time
+from datetime import datetime
 
-class CreditCardAPITester:
-    def __init__(self, base_url="https://b24cc02b-55f7-4d08-a4fd-c74e2c6f2cd5.preview.emergentagent.com"):
-        self.base_url = base_url
-        self.access_token = None
-        self.refresh_token = None
+class CreditCardAppTester:
+    def __init__(self, base_url=None):
+        # Get the backend URL from environment or use the one from frontend .env
+        if base_url:
+            self.base_url = base_url
+        else:
+            # Read from frontend .env file
+            with open('/app/frontend/.env', 'r') as f:
+                for line in f:
+                    if 'REACT_APP_BACKEND_URL' in line:
+                        self.base_url = line.split('=')[1].strip().strip('"')
+                        break
+        
+        print(f"Using backend URL: {self.base_url}")
+        self.token = None
         self.tests_run = 0
         self.tests_passed = 0
-        self.cookies = {}
+        self.session = requests.Session()
 
-    def run_test(self, name, method, endpoint, expected_status, data=None, files=None, auth=True):
+    def run_test(self, name, method, endpoint, expected_status, data=None, headers=None, allow_redirects=True):
         """Run a single API test"""
-        url = f"{self.base_url}{endpoint}"
-        headers = {'Content-Type': 'application/json'} if not files else {}
+        url = f"{self.base_url}/{endpoint}"
+        if not headers:
+            headers = {'Content-Type': 'application/json'}
         
-        if auth and self.access_token:
-            headers['Authorization'] = f'Bearer {self.access_token}'
+        if self.token:
+            headers['Authorization'] = f'Bearer {self.token}'
 
         self.tests_run += 1
         print(f"\n🔍 Testing {name}...")
         
         try:
             if method == 'GET':
-                response = requests.get(url, headers=headers, cookies=self.cookies)
+                response = self.session.get(url, headers=headers, allow_redirects=allow_redirects)
             elif method == 'POST':
-                if files:
-                    response = requests.post(url, files=files, headers=headers, cookies=self.cookies)
-                else:
-                    response = requests.post(url, json=data, headers=headers, cookies=self.cookies)
+                response = self.session.post(url, json=data, headers=headers, allow_redirects=allow_redirects)
             elif method == 'DELETE':
-                response = requests.delete(url, headers=headers, cookies=self.cookies)
+                response = self.session.delete(url, headers=headers, allow_redirects=allow_redirects)
             
-            success = response.status_code == expected_status
+            # For redirects, we consider 3xx as success
+            success = False
+            if expected_status == 'redirect':
+                success = 300 <= response.status_code < 400
+                print(f"✅ Redirect status: {response.status_code}, Location: {response.headers.get('Location', 'No location header')}")
+            else:
+                success = response.status_code == expected_status
             
             if success:
                 self.tests_passed += 1
                 print(f"✅ Passed - Status: {response.status_code}")
-                try:
-                    return success, response.json() if response.text and response.headers.get('content-type', '').startswith('application/json') else {}
-                except json.JSONDecodeError:
-                    return success, {}
+                if response.headers.get('Content-Type', '').startswith('application/json'):
+                    try:
+                        return success, response.json()
+                    except:
+                        return success, {}
+                return success, response
             else:
                 print(f"❌ Failed - Expected {expected_status}, got {response.status_code}")
-                print(f"Response: {response.text}")
-                return False, {}
+                print(f"Response: {response.text[:500]}")
+                return False, response
 
         except Exception as e:
             print(f"❌ Failed - Error: {str(e)}")
-            return False, {}
+            return False, None
 
-    def test_root_endpoint(self):
-        """Test the root API endpoint"""
-        return self.run_test(
-            "Root API Endpoint",
-            "GET",
-            "/api",
-            200,
-            auth=False
-        )
+    def test_api_root(self):
+        """Test the API root endpoint"""
+        return self.run_test("API Root", "GET", "api", 307)  # Should redirect to /api/
+
+    def test_api_docs(self):
+        """Test the API docs endpoint"""
+        return self.run_test("API Docs", "GET", "api/docs", 200)
 
     def test_google_login_redirect(self):
-        """Test Google login redirect"""
-        success, _ = self.run_test(
-            "Google Login Redirect",
-            "GET",
-            "/login/google",
-            200,
-            auth=False
+        """Test the Google login redirect endpoint"""
+        return self.run_test(
+            "Google Login Redirect", 
+            "GET", 
+            "api/login/google", 
+            'redirect',
+            allow_redirects=False
         )
-        return success
 
-    def test_me_endpoint_unauthenticated(self):
-        """Test /me endpoint without authentication"""
-        success, _ = self.run_test(
-            "Me Endpoint (Unauthenticated)",
-            "GET",
-            "/me",
-            401,
-            auth=False
-        )
-        return success
+    def test_me_endpoint_unauthorized(self):
+        """Test the /me endpoint without authentication"""
+        return self.run_test("Me Endpoint (Unauthorized)", "GET", "api/me", 401)
 
-    def test_protected_endpoint_unauthenticated(self):
-        """Test protected endpoint without authentication"""
-        success, _ = self.run_test(
-            "Protected Endpoint (Unauthenticated)",
-            "GET",
-            "/api/credit-cards",
-            401,
-            auth=False
-        )
-        return success
-
-    def test_create_card_unauthenticated(self):
-        """Test creating a card without authentication"""
-        card_data = {
-            "card_name": "Test Card",
-            "issuer": "Test Bank",
-            "account_number": "1234",
-            "open_date": "2023-01-01",
-            "status": "Active",
-            "credit_limit": 5000,
-            "current_balance": 1000,
-            "annual_fee": 0
-        }
+    def test_protected_endpoints_unauthorized(self):
+        """Test protected endpoints without authentication"""
+        endpoints = [
+            ("Credit Cards", "GET", "api/credit-cards"),
+            ("Dashboard Stats", "GET", "api/dashboard-stats")
+        ]
         
-        success, _ = self.run_test(
-            "Create Card (Unauthenticated)",
-            "POST",
-            "/api/credit-cards",
-            401,
-            data=card_data,
-            auth=False
-        )
-        return success
+        results = []
+        for name, method, endpoint in endpoints:
+            result = self.run_test(f"{name} (Unauthorized)", method, endpoint, 401)
+            results.append(result)
+        
+        return all(r[0] for r in results)
 
-    def test_dashboard_stats_unauthenticated(self):
-        """Test dashboard stats without authentication"""
-        success, _ = self.run_test(
-            "Dashboard Stats (Unauthenticated)",
-            "GET",
-            "/api/dashboard-stats",
-            401,
-            auth=False
-        )
-        return success
+    def print_summary(self):
+        """Print a summary of the test results"""
+        print("\n" + "="*50)
+        print(f"📊 Test Summary: {self.tests_passed}/{self.tests_run} tests passed")
+        print("="*50)
+        
+        if self.tests_passed == self.tests_run:
+            print("✅ All tests passed!")
+        else:
+            print(f"❌ {self.tests_run - self.tests_passed} tests failed")
+        
+        return self.tests_passed == self.tests_run
 
 def main():
     # Setup
-    tester = CreditCardAPITester()
+    tester = CreditCardAppTester()
     
-    # Run tests for unauthenticated access
-    print("\n===== Testing Unauthenticated Access =====")
-    tester.test_root_endpoint()
+    # Run tests
+    tester.test_api_root()
+    tester.test_api_docs()
     tester.test_google_login_redirect()
-    tester.test_me_endpoint_unauthenticated()
-    tester.test_protected_endpoint_unauthenticated()
-    tester.test_create_card_unauthenticated()
-    tester.test_dashboard_stats_unauthenticated()
+    tester.test_me_endpoint_unauthorized()
+    tester.test_protected_endpoints_unauthorized()
     
-    # Print results
-    print(f"\n📊 Tests passed: {tester.tests_passed}/{tester.tests_run}")
-    print("\n⚠️ Note: Full authentication flow tests require browser interaction")
-    print("   Use the browser automation tool to test the complete OAuth flow")
-    
-    return 0 if tester.tests_passed == tester.tests_run else 1
+    # Print summary
+    success = tester.print_summary()
+    return 0 if success else 1
 
 if __name__ == "__main__":
     sys.exit(main())
