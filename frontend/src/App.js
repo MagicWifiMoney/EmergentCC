@@ -1,11 +1,183 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, createContext, useContext } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useDropzone } from 'react-dropzone';
+import Cookies from 'js-cookie';
 import './App.css';
 
 const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
 
-function App() {
+// Create AuthContext
+const AuthContext = createContext();
+
+// Auth Provider Component
+const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    checkAuthStatus();
+  }, []);
+
+  const checkAuthStatus = async () => {
+    try {
+      const token = Cookies.get('access_token');
+      if (token) {
+        const response = await axios.get(`${API_BASE_URL}/me`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setUser(response.data);
+      }
+    } catch (error) {
+      console.log('Not authenticated');
+      Cookies.remove('access_token');
+      Cookies.remove('refresh_token');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const login = (redirectUrl = null) => {
+    window.location.href = `${API_BASE_URL}/login/google`;
+  };
+
+  const logout = async () => {
+    try {
+      await axios.post(`${API_BASE_URL}/logout`);
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      Cookies.remove('access_token');
+      Cookies.remove('refresh_token');
+      setUser(null);
+    }
+  };
+
+  const value = {
+    user,
+    loading,
+    login,
+    logout,
+    checkAuthStatus
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
+
+// Custom hook to use auth context
+const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
+
+// Protected Route Component
+const ProtectedRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">
+        <div className="glass-card text-center">
+          <div className="animate-spin w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return user ? children : <Navigate to="/login" replace />;
+};
+
+// Login Component
+const LoginPage = () => {
+  const { login, user } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (user) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [user, navigate]);
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">
+      <div className="max-w-md w-full mx-4">
+        <div className="glass-card text-center">
+          <div className="mb-8">
+            <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-4 rounded-2xl shadow-lg mx-auto w-16 h-16 flex items-center justify-center mb-6">
+              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+              </svg>
+            </div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent mb-2">
+              Credit Card Manager
+            </h1>
+            <p className="text-gray-600">
+              AI-powered credit optimization & rewards tracking
+            </p>
+          </div>
+
+          <div className="space-y-6">
+            <div className="text-left">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">Welcome! Sign in to continue</h2>
+              <ul className="text-sm text-gray-600 space-y-2 mb-6">
+                <li className="flex items-center">
+                  <svg className="w-4 h-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Upload PDF credit reports for instant analysis
+                </li>
+                <li className="flex items-center">
+                  <svg className="w-4 h-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Track Chase 5/24 status and eligibility
+                </li>
+                <li className="flex items-center">
+                  <svg className="w-4 h-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Optimize annual fees and credit utilization
+                </li>
+                <li className="flex items-center">
+                  <svg className="w-4 h-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Get personalized credit insights
+                </li>
+              </ul>
+            </div>
+
+            <button
+              onClick={login}
+              className="w-full bg-white border border-gray-300 rounded-xl px-6 py-4 flex items-center justify-center space-x-3 hover:bg-gray-50 transition-colors duration-200 shadow-lg hover:shadow-xl"
+            >
+              <svg className="w-5 h-5" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+              </svg>
+              <span className="font-medium text-gray-700">Continue with Google</span>
+            </button>
+
+            <p className="text-xs text-gray-500">
+              By signing in, you agree to our Terms of Service and Privacy Policy. 
+              Your data is encrypted and secure.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Main Dashboard Component (with authentication)
+const Dashboard = () => {
+  const { user, logout } = useAuth();
   const [creditCards, setCreditCards] = useState([]);
   const [stats, setStats] = useState({});
   const [uploading, setUploading] = useState(false);
@@ -13,13 +185,18 @@ function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
 
   useEffect(() => {
-    fetchCreditCards();
-    fetchStats();
-  }, []);
+    if (user) {
+      fetchCreditCards();
+      fetchStats();
+    }
+  }, [user]);
 
   const fetchCreditCards = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/credit-cards`);
+      const token = Cookies.get('access_token');
+      const response = await axios.get(`${API_BASE_URL}/api/credit-cards`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setCreditCards(response.data);
     } catch (error) {
       console.error('Error fetching credit cards:', error);
@@ -28,7 +205,10 @@ function App() {
 
   const fetchStats = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/dashboard-stats`);
+      const token = Cookies.get('access_token');
+      const response = await axios.get(`${API_BASE_URL}/api/dashboard-stats`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setStats(response.data);
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -46,12 +226,14 @@ function App() {
     formData.append('file', file);
 
     try {
+      const token = Cookies.get('access_token');
       const response = await axios.post(
         `${API_BASE_URL}/api/upload-credit-report`,
         formData,
         {
           headers: {
             'Content-Type': 'multipart/form-data',
+            'Authorization': `Bearer ${token}`
           },
         }
       );
@@ -84,7 +266,10 @@ function App() {
   const clearAllCards = async () => {
     if (window.confirm('Are you sure you want to clear all credit cards?')) {
       try {
-        await axios.delete(`${API_BASE_URL}/api/credit-cards`);
+        const token = Cookies.get('access_token');
+        await axios.delete(`${API_BASE_URL}/api/credit-cards`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
         await fetchCreditCards();
         await fetchStats();
         setUploadStatus('All credit cards cleared.');
@@ -97,7 +282,10 @@ function App() {
   const deleteCard = async (cardId) => {
     if (window.confirm('Are you sure you want to delete this card?')) {
       try {
-        await axios.delete(`${API_BASE_URL}/api/credit-cards/${cardId}`);
+        const token = Cookies.get('access_token');
+        await axios.delete(`${API_BASE_URL}/api/credit-cards/${cardId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
         await fetchCreditCards();
         await fetchStats();
       } catch (error) {
@@ -169,42 +357,64 @@ function App() {
                 <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
                   Credit Card Manager
                 </h1>
-                <p className="text-gray-600 mt-1">AI-powered credit optimization & rewards tracking</p>
+                <p className="text-gray-600 mt-1">Welcome back, {user?.name}!</p>
               </div>
             </div>
             
-            <nav className="flex space-x-1 bg-white/50 p-1 rounded-xl backdrop-blur-sm">
-              <button
-                onClick={() => setActiveTab('dashboard')}
-                className={`px-6 py-3 rounded-lg font-medium transition-all duration-200 ${
-                  activeTab === 'dashboard'
-                    ? 'bg-white shadow-lg text-blue-600'
-                    : 'text-gray-600 hover:text-blue-600 hover:bg-white/50'
-                }`}
-              >
-                Dashboard
-              </button>
-              <button
-                onClick={() => setActiveTab('upload')}
-                className={`px-6 py-3 rounded-lg font-medium transition-all duration-200 ${
-                  activeTab === 'upload'
-                    ? 'bg-white shadow-lg text-blue-600'
-                    : 'text-gray-600 hover:text-blue-600 hover:bg-white/50'
-                }`}
-              >
-                Upload Report
-              </button>
-              <button
-                onClick={() => setActiveTab('cards')}
-                className={`px-6 py-3 rounded-lg font-medium transition-all duration-200 ${
-                  activeTab === 'cards'
-                    ? 'bg-white shadow-lg text-blue-600'
-                    : 'text-gray-600 hover:text-blue-600 hover:bg-white/50'
-                }`}
-              >
-                My Cards ({creditCards.length})
-              </button>
-            </nav>
+            <div className="flex items-center space-x-4">
+              <nav className="flex space-x-1 bg-white/50 p-1 rounded-xl backdrop-blur-sm">
+                <button
+                  onClick={() => setActiveTab('dashboard')}
+                  className={`px-6 py-3 rounded-lg font-medium transition-all duration-200 ${
+                    activeTab === 'dashboard'
+                      ? 'bg-white shadow-lg text-blue-600'
+                      : 'text-gray-600 hover:text-blue-600 hover:bg-white/50'
+                  }`}
+                >
+                  Dashboard
+                </button>
+                <button
+                  onClick={() => setActiveTab('upload')}
+                  className={`px-6 py-3 rounded-lg font-medium transition-all duration-200 ${
+                    activeTab === 'upload'
+                      ? 'bg-white shadow-lg text-blue-600'
+                      : 'text-gray-600 hover:text-blue-600 hover:bg-white/50'
+                  }`}
+                >
+                  Upload Report
+                </button>
+                <button
+                  onClick={() => setActiveTab('cards')}
+                  className={`px-6 py-3 rounded-lg font-medium transition-all duration-200 ${
+                    activeTab === 'cards'
+                      ? 'bg-white shadow-lg text-blue-600'
+                      : 'text-gray-600 hover:text-blue-600 hover:bg-white/50'
+                  }`}
+                >
+                  My Cards ({creditCards.length})
+                </button>
+              </nav>
+
+              {/* User Menu */}
+              <div className="flex items-center space-x-2">
+                {user?.picture && (
+                  <img 
+                    src={user.picture} 
+                    alt={user.name}
+                    className="w-10 h-10 rounded-full border-2 border-white shadow-lg"
+                  />
+                )}
+                <button
+                  onClick={logout}
+                  className="px-4 py-2 text-gray-600 hover:text-red-600 transition-colors duration-200"
+                  title="Logout"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </header>
@@ -671,6 +881,30 @@ function App() {
 
       </main>
     </div>
+  );
+};
+
+// Main App Component
+function App() {
+  return (
+    <AuthProvider>
+      <Router>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/" element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/dashboard" element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Router>
+    </AuthProvider>
   );
 }
 
