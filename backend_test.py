@@ -185,6 +185,18 @@ class CreditCardAPITester:
             print(f"Response: {response}")
         return success
         
+    def test_delete_card(self, card_id):
+        """Test deleting a specific credit card"""
+        success, response = self.run_test(
+            f"Delete Card (ID: {card_id})",
+            "DELETE",
+            f"api/credit-cards/{card_id}",
+            200
+        )
+        if success:
+            print(f"Response: {response}")
+        return success
+        
     def create_test_credit_cards(self):
         """Create test credit cards with data for testing analytics"""
         test_cards = [
