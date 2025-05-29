@@ -1,7 +1,8 @@
-from fastapi import FastAPI, APIRouter, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, APIRouter, UploadFile, File, HTTPException, Depends, Request, Response
+from fastapi.responses import JSONResponse, RedirectResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
@@ -17,6 +18,11 @@ from openai import OpenAI
 import json
 import re
 from collections import defaultdict
+from authlib.integrations.starlette_client import OAuth
+from starlette.config import Config
+from jose import JWTError, jwt
+import secrets
+import hashlib
 
 
 ROOT_DIR = Path(__file__).parent
@@ -30,16 +36,48 @@ db = client[os.environ['DB_NAME']]
 # OpenAI client
 openai_client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
 
-# Create the main app without a prefix
+# JWT Configuration
+JWT_SECRET = os.environ.get('JWT_SECRET', secrets.token_urlsafe(32))
+JWT_ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+REFRESH_TOKEN_EXPIRE_DAYS = 7
+
+# Create the main app
 app = FastAPI()
+
+# Add session middleware for OAuth
+app.add_middleware(SessionMiddleware, secret_key=JWT_SECRET)
+
+# OAuth Configuration
+config = Config()
+oauth = OAuth()
+oauth.register(
+    name='google',
+    client_id=os.environ.get('GOOGLE_CLIENT_ID'),
+    client_secret=os.environ.get('GOOGLE_CLIENT_SECRET'),
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_kwargs={'scope': 'openid email profile'}
+)
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
+# Auth router (no prefix for OAuth callbacks)
+auth_router = APIRouter()
+
 
 # Define Models
+class User(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    email: str
+    name: str
+    picture: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    last_login: datetime = Field(default_factory=datetime.utcnow)
+
 class CreditCard(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str  # Associate cards with users
     card_name: str
     issuer: str
     account_number: str  # Last 4 digits or masked
@@ -53,18 +91,84 @@ class CreditCard(BaseModel):
 
 class CreditReportUpload(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str  # Associate uploads with users
     filename: str
     upload_date: datetime = Field(default_factory=datetime.utcnow)
     cards_extracted: int
     processing_status: str
 
-class StatusCheck(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+class Token(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
 
-class StatusCheckCreate(BaseModel):
-    client_name: str
+class TokenData(BaseModel):
+    email: Optional[str] = None
+
+class UserResponse(BaseModel):
+    id: str
+    email: str
+    name: str
+    picture: Optional[str] = None
+
+
+# Utility Functions
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return encoded_jwt
+
+def create_refresh_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return encoded_jwt
+
+async def get_current_user(request: Request) -> User:
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
+    # Try to get token from Authorization header first
+    authorization = request.headers.get("Authorization")
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ")[1]
+    else:
+        # Fallback to cookie
+        token = request.cookies.get("access_token")
+    
+    if not token:
+        raise credentials_exception
+    
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise credentials_exception
+        token_data = TokenData(email=email)
+    except JWTError:
+        raise credentials_exception
+    
+    user_dict = await db.users.find_one({"email": token_data.email})
+    if user_dict is None:
+        raise credentials_exception
+    
+    return User(**user_dict)
+
+async def get_current_user_optional(request: Request) -> Optional[User]:
+    """Optional authentication - returns None if not authenticated"""
+    try:
+        return await get_current_user(request)
+    except HTTPException:
+        return None
 
 
 def extract_pdf_text(file_path: str) -> str:
@@ -304,13 +408,122 @@ def analyze_credit_portfolio(cards: List[dict]) -> dict:
     }
 
 
-# API Routes
+# Authentication Routes
+@auth_router.get("/login/google")
+async def google_login(request: Request):
+    redirect_uri = request.url_for('google_auth')
+    return await oauth.google.authorize_redirect(request, redirect_uri)
+
+@auth_router.get("/auth/google")
+async def google_auth(request: Request):
+    try:
+        token = await oauth.google.authorize_access_token(request)
+        user_info = token.get('userinfo')
+        
+        if not user_info:
+            raise HTTPException(status_code=400, detail="Failed to get user info from Google")
+        
+        # Create or update user in database
+        user_data = {
+            "email": user_info.get('email'),
+            "name": user_info.get('name'),
+            "picture": user_info.get('picture'),
+            "last_login": datetime.utcnow()
+        }
+        
+        # Update or create user
+        existing_user = await db.users.find_one({"email": user_data["email"]})
+        if existing_user:
+            await db.users.update_one(
+                {"email": user_data["email"]},
+                {"$set": user_data}
+            )
+            user_id = existing_user["id"]
+        else:
+            user_data["id"] = str(uuid.uuid4())
+            user_data["created_at"] = datetime.utcnow()
+            await db.users.insert_one(user_data)
+            user_id = user_data["id"]
+        
+        # Create tokens
+        access_token = create_access_token(data={"sub": user_data["email"]})
+        refresh_token = create_refresh_token(data={"sub": user_data["email"]})
+        
+        # Create response and set cookies
+        response = RedirectResponse(url="/")
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            httponly=True,
+            secure=True,
+            samesite="lax"
+        )
+        response.set_cookie(
+            key="refresh_token", 
+            value=refresh_token,
+            max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+            httponly=True,
+            secure=True,
+            samesite="lax"
+        )
+        
+        return response
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Authentication failed: {str(e)}")
+
+@auth_router.post("/logout")
+async def logout(response: Response):
+    response.delete_cookie(key="access_token")
+    response.delete_cookie(key="refresh_token")
+    return {"message": "Successfully logged out"}
+
+@auth_router.get("/me", response_model=UserResponse)
+async def get_current_user_info(current_user: User = Depends(get_current_user)):
+    return UserResponse(
+        id=current_user.id,
+        email=current_user.email,
+        name=current_user.name,
+        picture=current_user.picture
+    )
+
+@auth_router.post("/refresh")
+async def refresh_token(request: Request):
+    refresh_token = request.cookies.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="No refresh token")
+    
+    try:
+        payload = jwt.decode(refresh_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    # Create new access token
+    access_token = create_access_token(data={"sub": email})
+    
+    response = JSONResponse(content={"message": "Token refreshed"})
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        httponly=True,
+        secure=True,
+        samesite="lax"
+    )
+    return response
+
+
+# API Routes (Protected)
 @api_router.get("/")
 async def root():
     return {"message": "Credit Card Management API"}
 
 @api_router.post("/upload-credit-report")
-async def upload_credit_report(file: UploadFile = File(...)):
+async def upload_credit_report(file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
     """Upload and process a credit report PDF"""
     
     # Validate file type
@@ -332,12 +545,13 @@ async def upload_credit_report(file: UploadFile = File(...)):
         # Process with OpenAI to extract credit card data
         cards_data = await parse_credit_cards_with_gpt4o(extracted_text)
         
-        # Save credit cards to database
+        # Save credit cards to database with user association
         credit_cards = []
         for card_data in cards_data:
             # Create CreditCard object with validation
             try:
                 credit_card = CreditCard(
+                    user_id=current_user.id,  # Associate with current user
                     card_name=card_data.get('card_name', 'Unknown Card'),
                     issuer=card_data.get('issuer', 'Unknown Issuer'),
                     account_number=card_data.get('account_number', '****'),
@@ -358,6 +572,7 @@ async def upload_credit_report(file: UploadFile = File(...)):
         
         # Save upload record
         upload_record = CreditReportUpload(
+            user_id=current_user.id,  # Associate with current user
             filename=file.filename,
             cards_extracted=len(credit_cards),
             processing_status="Completed"
@@ -386,18 +601,19 @@ async def upload_credit_report(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
 @api_router.get("/credit-cards", response_model=List[CreditCard])
-async def get_credit_cards():
-    """Get all credit cards"""
-    cards = await db.credit_cards.find().to_list(1000)
+async def get_credit_cards(current_user: User = Depends(get_current_user)):
+    """Get current user's credit cards"""
+    cards = await db.credit_cards.find({"user_id": current_user.id}).to_list(1000)
     return [CreditCard(**card) for card in cards]
 
 @api_router.post("/credit-cards", response_model=CreditCard)
-async def create_credit_card(card: CreditCard):
+async def create_credit_card(card: CreditCard, current_user: User = Depends(get_current_user)):
     """Create a new credit card (for testing purposes)"""
     try:
-        # Generate new ID if not provided
+        # Generate new ID if not provided and associate with current user
         if not card.id:
             card.id = str(uuid.uuid4())
+        card.user_id = current_user.id
         
         # Insert into database
         await db.credit_cards.insert_one(card.dict())
@@ -406,11 +622,11 @@ async def create_credit_card(card: CreditCard):
         raise HTTPException(status_code=500, detail=f"Error creating credit card: {str(e)}")
 
 @api_router.get("/dashboard-stats")
-async def get_dashboard_stats():
-    """Get comprehensive dashboard statistics"""
+async def get_dashboard_stats(current_user: User = Depends(get_current_user)):
+    """Get comprehensive dashboard statistics for current user"""
     try:
-        # Get all cards
-        cards = await db.credit_cards.find().to_list(1000)
+        # Get current user's cards only
+        cards = await db.credit_cards.find({"user_id": current_user.id}).to_list(1000)
         
         if not cards:
             return {
@@ -500,34 +716,22 @@ async def get_dashboard_stats():
         raise HTTPException(status_code=500, detail=f"Error calculating stats: {str(e)}")
 
 @api_router.delete("/credit-cards/{card_id}")
-async def delete_credit_card(card_id: str):
-    """Delete a credit card"""
-    result = await db.credit_cards.delete_one({"id": card_id})
+async def delete_credit_card(card_id: str, current_user: User = Depends(get_current_user)):
+    """Delete a credit card (only user's own cards)"""
+    result = await db.credit_cards.delete_one({"id": card_id, "user_id": current_user.id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Credit card not found")
     return {"message": "Credit card deleted successfully"}
 
 @api_router.delete("/credit-cards")
-async def clear_all_cards():
-    """Clear all credit cards (for testing)"""
-    await db.credit_cards.delete_many({})
+async def clear_all_cards(current_user: User = Depends(get_current_user)):
+    """Clear all credit cards for current user"""
+    await db.credit_cards.delete_many({"user_id": current_user.id})
     return {"message": "All credit cards cleared"}
 
-# Legacy routes
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.dict()
-    status_obj = StatusCheck(**status_dict)
-    _ = await db.status_checks.insert_one(status_obj.dict())
-    return status_obj
 
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    status_checks = await db.status_checks.find().to_list(1000)
-    return [StatusCheck(**status_check) for status_check in status_checks]
-
-
-# Include the router in the main app
+# Include routers
+app.include_router(auth_router)
 app.include_router(api_router)
 
 app.add_middleware(
