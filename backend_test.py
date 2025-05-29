@@ -43,7 +43,7 @@ class CreditCardAPITester:
                 self.tests_passed += 1
                 print(f"✅ Passed - Status: {response.status_code}")
                 try:
-                    return success, response.json() if response.text else {}
+                    return success, response.json() if response.text and response.headers.get('content-type', '').startswith('application/json') else {}
                 except json.JSONDecodeError:
                     return success, {}
             else:
