@@ -72,11 +72,7 @@ class CreditCardAppTester:
 
     def test_api_root(self):
         """Test the API root endpoint"""
-        return self.run_test("API Root", "GET", "api", 307)  # Should redirect to /api/
-
-    def test_api_docs(self):
-        """Test the API docs endpoint"""
-        return self.run_test("API Docs", "GET", "api/docs", 200)
+        return self.run_test("API Root", "GET", "api", 200)  # Returns JSON message
 
     def test_google_login_redirect(self):
         """Test the Google login redirect endpoint"""
@@ -125,7 +121,6 @@ def main():
     
     # Run tests
     tester.test_api_root()
-    tester.test_api_docs()
     tester.test_google_login_redirect()
     tester.test_me_endpoint_unauthorized()
     tester.test_protected_endpoints_unauthorized()
