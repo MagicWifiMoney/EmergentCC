@@ -757,6 +757,96 @@ async def clear_all_cards(current_user: User = Depends(get_current_user_or_demo)
     await db.credit_cards.delete_many({"user_id": current_user.id})
     return {"message": "All credit cards cleared"}
 
+@api_router.post("/demo-data")
+async def create_demo_data(current_user: User = Depends(get_current_user_or_demo)):
+    """Create demo credit card data for testing"""
+    from datetime import datetime, timedelta
+    
+    demo_cards = [
+        {
+            "id": str(uuid.uuid4()),
+            "user_id": current_user.id,
+            "card_name": "Chase Sapphire Preferred",
+            "issuer": "Chase",
+            "account_number": "1234",
+            "open_date": (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d"),
+            "status": "Active",
+            "credit_limit": 10000,
+            "current_balance": 2500,
+            "annual_fee": 95,
+            "account_type": "Credit Card",
+            "created_at": datetime.utcnow()
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "user_id": current_user.id,
+            "card_name": "American Express Gold Card",
+            "issuer": "American Express",
+            "account_number": "5678",
+            "open_date": (datetime.now() - timedelta(days=1095)).strftime("%Y-%m-%d"),
+            "status": "Active",
+            "credit_limit": 15000,
+            "current_balance": 6000,
+            "annual_fee": 250,
+            "account_type": "Credit Card",
+            "created_at": datetime.utcnow()
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "user_id": current_user.id,
+            "card_name": "Discover it Cash Back",
+            "issuer": "Discover",
+            "account_number": "9012",
+            "open_date": (datetime.now() - timedelta(days=1825)).strftime("%Y-%m-%d"),
+            "status": "Active",
+            "credit_limit": 8000,
+            "current_balance": 1000,
+            "annual_fee": 0,
+            "account_type": "Credit Card",
+            "created_at": datetime.utcnow()
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "user_id": current_user.id,
+            "card_name": "Capital One Venture",
+            "issuer": "Capital One",
+            "account_number": "3456",
+            "open_date": (datetime.now() - timedelta(days=60)).strftime("%Y-%m-%d"),
+            "status": "Active",
+            "credit_limit": 12000,
+            "current_balance": 500,
+            "annual_fee": 95,
+            "account_type": "Credit Card",
+            "created_at": datetime.utcnow()
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "user_id": current_user.id,
+            "card_name": "Citi Double Cash",
+            "issuer": "Citi",
+            "account_number": "7890",
+            "open_date": (datetime.now() - timedelta(days=730)).strftime("%Y-%m-%d"),
+            "status": "Active",
+            "credit_limit": 7500,
+            "current_balance": 3000,
+            "annual_fee": 0,
+            "account_type": "Credit Card",
+            "created_at": datetime.utcnow()
+        }
+    ]
+    
+    # Clear existing demo data first
+    await db.credit_cards.delete_many({"user_id": current_user.id})
+    
+    # Insert demo cards
+    await db.credit_cards.insert_many(demo_cards)
+    
+    return {
+        "message": "Demo data created successfully",
+        "cards_created": len(demo_cards),
+        "demo_cards": demo_cards
+    }
+
 
 # Include routers
 app.include_router(auth_router)
