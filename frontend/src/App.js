@@ -238,15 +238,14 @@ const Dashboard = () => {
 
     try {
       const token = Cookies.get('access_token');
+      const headers = token ? 
+        { 'Content-Type': 'multipart/form-data', 'Authorization': `Bearer ${token}` } :
+        { 'Content-Type': 'multipart/form-data' };
+      
       const response = await axios.post(
         `${API_BASE_URL}/api/upload-credit-report`,
         formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-            'Authorization': `Bearer ${token}`
-          },
-        }
+        { headers }
       );
 
       setUploadStatus(`Success! Extracted ${response.data.cards_extracted} credit cards.`);
