@@ -176,6 +176,28 @@ async def get_current_user_optional(request: Request) -> Optional[User]:
     except HTTPException:
         return None
 
+async def get_current_user_or_demo(request: Request) -> User:
+    """Get current user or create a demo user for development"""
+    try:
+        return await get_current_user(request)
+    except HTTPException:
+        # Create/return demo user for development
+        demo_user_data = {
+            "id": "demo-user-123",
+            "email": "demo@example.com",
+            "name": "Demo User",
+            "picture": "https://via.placeholder.com/150/4285F4/FFFFFF?text=Demo",
+            "created_at": datetime.utcnow(),
+            "last_login": datetime.utcnow()
+        }
+        
+        # Check if demo user exists, if not create it
+        existing_demo = await db.users.find_one({"id": "demo-user-123"})
+        if not existing_demo:
+            await db.users.insert_one(demo_user_data)
+        
+        return User(**demo_user_data)
+
 
 def extract_pdf_text(file_path: str) -> str:
     """Extract text from PDF using pdfplumber"""
