@@ -277,9 +277,8 @@ const Dashboard = () => {
     if (window.confirm('Are you sure you want to clear all credit cards?')) {
       try {
         const token = Cookies.get('access_token');
-        await axios.delete(`${API_BASE_URL}/api/credit-cards`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+        await axios.delete(`${API_BASE_URL}/api/credit-cards`, { headers });
         await fetchCreditCards();
         await fetchStats();
         setUploadStatus('All credit cards cleared.');
@@ -293,9 +292,8 @@ const Dashboard = () => {
     if (window.confirm('Are you sure you want to delete this card?')) {
       try {
         const token = Cookies.get('access_token');
-        await axios.delete(`${API_BASE_URL}/api/credit-cards/${cardId}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+        await axios.delete(`${API_BASE_URL}/api/credit-cards/${cardId}`, { headers });
         await fetchCreditCards();
         await fetchStats();
       } catch (error) {
