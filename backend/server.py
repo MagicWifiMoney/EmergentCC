@@ -629,13 +629,13 @@ async def upload_credit_report(file: UploadFile = File(...), current_user: User 
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
 @api_router.get("/credit-cards", response_model=List[CreditCard])
-async def get_credit_cards(current_user: User = Depends(get_current_user)):
+async def get_credit_cards(current_user: User = Depends(get_current_user_or_demo)):
     """Get current user's credit cards"""
     cards = await db.credit_cards.find({"user_id": current_user.id}).to_list(1000)
     return [CreditCard(**card) for card in cards]
 
 @api_router.post("/credit-cards", response_model=CreditCard)
-async def create_credit_card(card: CreditCard, current_user: User = Depends(get_current_user)):
+async def create_credit_card(card: CreditCard, current_user: User = Depends(get_current_user_or_demo)):
     """Create a new credit card (for testing purposes)"""
     try:
         # Generate new ID if not provided and associate with current user
@@ -650,7 +650,7 @@ async def create_credit_card(card: CreditCard, current_user: User = Depends(get_
         raise HTTPException(status_code=500, detail=f"Error creating credit card: {str(e)}")
 
 @api_router.get("/dashboard-stats")
-async def get_dashboard_stats(current_user: User = Depends(get_current_user)):
+async def get_dashboard_stats(current_user: User = Depends(get_current_user_or_demo)):
     """Get comprehensive dashboard statistics for current user"""
     try:
         # Get current user's cards only
