@@ -744,7 +744,7 @@ async def get_dashboard_stats(current_user: User = Depends(get_current_user_or_d
         raise HTTPException(status_code=500, detail=f"Error calculating stats: {str(e)}")
 
 @api_router.delete("/credit-cards/{card_id}")
-async def delete_credit_card(card_id: str, current_user: User = Depends(get_current_user)):
+async def delete_credit_card(card_id: str, current_user: User = Depends(get_current_user_or_demo)):
     """Delete a credit card (only user's own cards)"""
     result = await db.credit_cards.delete_one({"id": card_id, "user_id": current_user.id})
     if result.deleted_count == 0:
@@ -752,7 +752,7 @@ async def delete_credit_card(card_id: str, current_user: User = Depends(get_curr
     return {"message": "Credit card deleted successfully"}
 
 @api_router.delete("/credit-cards")
-async def clear_all_cards(current_user: User = Depends(get_current_user)):
+async def clear_all_cards(current_user: User = Depends(get_current_user_or_demo)):
     """Clear all credit cards for current user"""
     await db.credit_cards.delete_many({"user_id": current_user.id})
     return {"message": "All credit cards cleared"}
