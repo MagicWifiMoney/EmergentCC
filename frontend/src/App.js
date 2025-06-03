@@ -207,9 +207,8 @@ const Dashboard = () => {
   const fetchCreditCards = async () => {
     try {
       const token = Cookies.get('access_token');
-      const response = await axios.get(`${API_BASE_URL}/api/credit-cards`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const response = await axios.get(`${API_BASE_URL}/api/credit-cards`, { headers });
       setCreditCards(response.data);
     } catch (error) {
       console.error('Error fetching credit cards:', error);
@@ -219,9 +218,8 @@ const Dashboard = () => {
   const fetchStats = async () => {
     try {
       const token = Cookies.get('access_token');
-      const response = await axios.get(`${API_BASE_URL}/api/dashboard-stats`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const response = await axios.get(`${API_BASE_URL}/api/dashboard-stats`, { headers });
       setStats(response.data);
     } catch (error) {
       console.error('Error fetching stats:', error);
