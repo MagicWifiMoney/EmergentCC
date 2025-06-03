@@ -551,7 +551,7 @@ async def root():
     return {"message": "Credit Card Management API"}
 
 @api_router.post("/upload-credit-report")
-async def upload_credit_report(file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
+async def upload_credit_report(file: UploadFile = File(...), current_user: User = Depends(get_current_user_or_demo)):
     """Upload and process a credit report PDF"""
     
     # Validate file type
